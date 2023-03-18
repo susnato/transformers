@@ -2672,7 +2672,6 @@ else:
         [
             "POP2PIANO_PRETRAINED_MODEL_ARCHIVE_LIST",
             "Pop2PianoForConditionalGeneration",
-            # "Pop2PianoModel",
             "Pop2PianoPreTrainedModel",
         ]
     )
@@ -5983,7 +5982,6 @@ if TYPE_CHECKING:
         from .models.pop2piano import (
             POP2PIANO_PRETRAINED_MODEL_ARCHIVE_LIST,
             Pop2PianoForConditionalGeneration,
-            # Pop2PianoModel,
             Pop2PianoPreTrainedModel,
         )
         from .models.x_clip import (
