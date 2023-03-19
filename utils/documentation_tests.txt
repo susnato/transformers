@@ -147,6 +147,8 @@ src/transformers/models/plbart/configuration_plbart.py
 src/transformers/models/plbart/modeling_plbart.py
 src/transformers/models/poolformer/configuration_poolformer.py
 src/transformers/models/poolformer/modeling_poolformer.py
+src/transformers/models/pop2piano/modeling_pop2piano.py
+src/transformers/models/pop2piano/configuration_pop2piano.py
 src/transformers/models/realm/configuration_realm.py
 src/transformers/models/reformer/configuration_reformer.py
 src/transformers/models/reformer/modeling_reformer.py

@@ -519,6 +519,8 @@
         title: Hubert
       - local: model_doc/mctct
         title: MCTCT
+      - local: model_doc/pop2piano
+        title: Pop2Piano
       - local: model_doc/sew
         title: SEW
       - local: model_doc/sew-d

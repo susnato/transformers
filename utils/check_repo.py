@@ -45,6 +45,7 @@ PRIVATE_MODELS = [
     "RealmBertModel",
     "T5Stack",
     "MT5Stack",
+    "Pop2PianoStack",
     "SwitchTransformersStack",
     "TFDPRSpanPredictor",
     "MaskFormerSwinModel",
