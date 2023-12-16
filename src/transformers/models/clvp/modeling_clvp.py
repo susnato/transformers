@@ -708,7 +708,10 @@ class ClvpConditioningEncoder(nn.Module):
                 f"Found {text_embeds.shape[0]} texts vs {mel_spec.shape[0]} audios"
             )
 
-        return torch.concat([mel_spec, text_embeds], dim=1)
+        # update attention_mask to be used by the decoder model
+        attention_mask = torch.nn.functional.pad(attention_mask, (1, 0), value=1)
+
+        return torch.concat([mel_spec, text_embeds], dim=1), attention_mask
 
 
 class ClvpPreTrainedModel(PreTrainedModel):
@@ -960,8 +963,10 @@ class ClvpEncoder(ClvpPreTrainedModel):
         else:
             raise ValueError("You have to specify either input_ids or inputs_embeds")
 
+        attention_mask_2d = None
         # expand attention_mask and create position_ids if needed
         if attention_mask is not None:
+            attention_mask_2d = attention_mask
             # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
             attention_mask = _prepare_4d_attention_mask(attention_mask, inputs_embeds.dtype)
 
@@ -1007,8 +1012,18 @@ class ClvpEncoder(ClvpPreTrainedModel):
         last_hidden_state = hidden_states
         last_hidden_state = self.final_layer_norm(last_hidden_state)
 
-        # take the mean over axis 1 and get pooled output
-        pooled_output = self.sequence_summary(last_hidden_state)
+        # first apply the attention_mask and then get the valid sequence
+        # then take the mean over axis 1 and get pooled output
+        pooled_output = torch.empty([last_hidden_state.shape[0], last_hidden_state.shape[2]],
+                                    dtype=last_hidden_state.dtype,
+                                    device=last_hidden_state.device,
+                                    )
+        for i in range(last_hidden_state.shape[0]):
+            # check where the 0 starts in attention_mask and then cutoff the sequence
+            # to make sure it is valid for the attention_mask with all ones we will pad it with 0 at the end,
+            # which does not interfere with the outputs
+            cutoff = torch.where(torch.nn.functional.pad(attention_mask_2d[i], (0, 1), value=0) == 0)[0].min() if attention_mask_2d is not None else last_hidden_state.shape[1]
+            pooled_output[i] = self.sequence_summary(last_hidden_state[i, :cutoff].unsqueeze(0))
 
         # apply the projection layer
         embeds = self.projection(pooled_output)
@@ -1343,20 +1358,26 @@ class ClvpForCausalLM(ClvpPreTrainedModel):
             mel_start_token_embedding += self.model.decoder.position_embeds_layer(
                 torch.full((conditioning_embeds.shape[0], 1), fill_value=0, device=conditioning_embeds.device)
             )
+
+
             conditioning_embeds = torch.concat([conditioning_embeds, mel_start_token_embedding], dim=1)
 
             # subtract the positional_ids here
-            if hasattr(model_kwargs, "attention_mask"):
-                position_ids = model_kwargs["attention_mask"].long().cumsum(-1) - 1
+            if model_kwargs.get("attention_mask", None) is not None:
+                # we must add 1 to attention_mask here, because we just concatenated the mel_start_token above.
+                attention_mask = torch.nn.functional.pad(model_kwargs["attention_mask"], (0, 1), value=1)
+                model_kwargs["attention_mask"] = attention_mask
+                position_ids = attention_mask.long().cumsum(-1) - 1
             else:
                 position_ids = torch.range(
                     0, conditioning_embeds.shape[1] - 1, dtype=torch.long, device=conditioning_embeds.device
                 )
-            position_ids = position_ids.unsqueeze(0).repeat(conditioning_embeds.shape[0], 1)
+                position_ids = position_ids.unsqueeze(0).repeat(conditioning_embeds.shape[0], 1)
 
             model_kwargs["inputs_embeds"] = conditioning_embeds - self.model.decoder.position_embeds_layer(
                 position_ids
             )
+            model_kwargs["position_ids"] = position_ids
             model_kwargs["input_ids"] = (
                 torch.ones((model_kwargs["inputs_embeds"].shape[0], 1), dtype=torch.long, device=self.device)
                 * self.config.bos_token_id
@@ -1396,8 +1417,6 @@ class ClvpForCausalLM(ClvpPreTrainedModel):
             position_ids.masked_fill_(attention_mask == 0, 1)
             if past_key_values:
                 position_ids = position_ids[:, -1].unsqueeze(-1)
-        else:
-            position_ids = None
 
         if conditioning_embeds is not None and past_key_values is not None:
             position_ids = torch.tensor([input_ids_length], dtype=torch.long, device=input_ids.device)
@@ -1414,6 +1433,7 @@ class ClvpForCausalLM(ClvpPreTrainedModel):
                 "use_cache": kwargs.get("use_cache"),
                 "position_ids": position_ids,
                 "token_type_ids": token_type_ids,
+                "attention_mask": attention_mask,
             }
         )
         return model_inputs
@@ -1784,7 +1804,7 @@ class ClvpModelForConditionalGeneration(ClvpPreTrainedModel):
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        conditioning_embeds = self.conditioning_encoder(
+        conditioning_embeds, decoder_attention_mask = self.conditioning_encoder(
             input_features=input_features,
             input_ids=input_ids,
             inputs_embeds=conditioning_encoder_inputs_embeds,
@@ -1793,6 +1813,7 @@ class ClvpModelForConditionalGeneration(ClvpPreTrainedModel):
 
         decoder_outputs = self.speech_decoder_model(
             inputs_embeds=conditioning_embeds,
+            attention_mask=decoder_attention_mask,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
@@ -1942,7 +1963,7 @@ class ClvpModelForConditionalGeneration(ClvpPreTrainedModel):
             eos_token_id=self.config.text_config.eos_token_id,
         )
 
-        conditioning_embeds = self.conditioning_encoder(
+        conditioning_embeds, decoder_attention_mask = self.conditioning_encoder(
             input_features=input_features,
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -1950,6 +1971,7 @@ class ClvpModelForConditionalGeneration(ClvpPreTrainedModel):
 
         decoder_outputs = self.speech_decoder_model.generate(
             conditioning_embeds=conditioning_embeds,
+            attention_mask=decoder_attention_mask,
             generation_config=generation_config,
             output_hidden_states=output_hidden_states,
             return_dict=generation_config.return_dict_in_generate,

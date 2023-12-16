@@ -579,7 +579,7 @@ class ClvpIntegrationTest(unittest.TestCase):
         with torch.no_grad():
             conditioning_encoder_outputs = self.model.conditioning_encoder(
                 input_features=self.input_features, input_ids=self.text_tokens
-            ).to("cpu")
+            )[0].to("cpu")
 
         self.assertEqual(
             conditioning_encoder_outputs.shape,
