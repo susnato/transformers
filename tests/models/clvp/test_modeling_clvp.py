@@ -560,12 +560,12 @@ class ClvpIntegrationTest(unittest.TestCase):
 
         self.model = ClvpModelForConditionalGeneration.from_pretrained("susnato/clvp_dev").to(torch_device)
         self.model.eval()
-        tokenizer = ClvpTokenizer.from_pretrained("susnato/clvp_dev")
-        feature_extractor = ClvpFeatureExtractor.from_pretrained("susnato/clvp_dev")
+        self.tokenizer = ClvpTokenizer.from_pretrained("susnato/clvp_dev")
+        self.feature_extractor = ClvpFeatureExtractor.from_pretrained("susnato/clvp_dev")
 
-        tokenizer_output = tokenizer(self.text, return_tensors="pt")
+        tokenizer_output = self.tokenizer(self.text, return_tensors="pt")
         self.text_tokens = tokenizer_output["input_ids"].to(torch_device)
-        self.input_features = feature_extractor(
+        self.input_features = self.feature_extractor(
             raw_speech=self.speech_samples, sampling_rate=self.sr, return_tensors="pt"
         )["input_features"].to(torch_device)
 
@@ -633,3 +633,77 @@ class ClvpIntegrationTest(unittest.TestCase):
 
         self.assertTrue(torch.allclose(full_model_output.speech_ids.cpu()[-3:, -3:], EXPECTED_SPEECH_IDS))
         self.assertTrue(torch.allclose(full_model_output.logits_per_text.cpu(), EXPECTED_SIMILARITY_SCORES))
+
+    def test_batching(self):
+        # define texts with different sequence lengths
+        text = ["This is an example text.", "This is an example text but with more words", "Small text"]
+
+        # pass each of them through tokenizer also take a combined one
+        single_tokenizer_output1 = self.tokenizer(text[0], return_tensors="pt", return_attention_mask=False).to(
+            torch_device
+        )
+        single_tokenizer_output2 = self.tokenizer(text[1], return_tensors="pt", return_attention_mask=True).to(
+            torch_device
+        )
+        single_tokenizer_output3 = self.tokenizer(text[2], return_tensors="pt", return_attention_mask=True).to(
+            torch_device
+        )
+        combined_tokenizer_output = self.tokenizer(
+            text, padding="longest", return_tensors="pt", return_attention_mask=True
+        ).to(torch_device)
+
+        # generate model outputs
+        single_tokenizer_output1 = self.model.generate(
+            **single_tokenizer_output1,
+            input_features=self.input_features,
+            do_sample=False,
+            max_new_tokens=10,
+        )
+        single_tokenizer_output2 = self.model.generate(
+            **single_tokenizer_output2,
+            input_features=self.input_features,
+            do_sample=False,
+            max_new_tokens=10,
+        )
+        single_tokenizer_output3 = self.model.generate(
+            **single_tokenizer_output3,
+            input_features=self.input_features,
+            do_sample=False,
+            max_new_tokens=10,
+        )
+        combined_model_output = self.model.generate(
+            **combined_tokenizer_output,
+            input_features=self.input_features,
+            do_sample=False,
+            max_new_tokens=10,
+        )
+
+        # now check for each single text whether the outputs are same as the combined one or not.
+        self.assertTrue(
+            torch.allclose(
+                single_tokenizer_output1.logits_per_text,
+                combined_model_output.logits_per_text[0, 0],
+                atol=1e-4,
+                rtol=1e-4,
+            )
+        )
+        self.assertTrue(
+            torch.allclose(
+                single_tokenizer_output2.logits_per_text,
+                combined_model_output.logits_per_text[1, 1],
+                atol=1e-4,
+                rtol=1e-4,
+            )
+        )
+        self.assertTrue(
+            torch.allclose(
+                single_tokenizer_output3.logits_per_text,
+                combined_model_output.logits_per_text[2, 2],
+                atol=1e-4,
+                rtol=1e-4,
+            )
+        )
+
+        self.assertTrue(torch.allclose(single_tokenizer_output1.speech_ids, combined_model_output.speech_ids[0]))
+        self.assertTrue(torch.allclose(single_tokenizer_output2.speech_ids, combined_model_output.speech_ids[1]))
+        self.assertTrue(torch.allclose(single_tokenizer_output3.speech_ids, combined_model_output.speech_ids[2]))

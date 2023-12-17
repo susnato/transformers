@@ -1014,15 +1014,20 @@ class ClvpEncoder(ClvpPreTrainedModel):
 
         # first apply the attention_mask and then get the valid sequence
         # then take the mean over axis 1 and get pooled output
-        pooled_output = torch.empty([last_hidden_state.shape[0], last_hidden_state.shape[2]],
-                                    dtype=last_hidden_state.dtype,
-                                    device=last_hidden_state.device,
-                                    )
+        pooled_output = torch.empty(
+            [last_hidden_state.shape[0], last_hidden_state.shape[2]],
+            dtype=last_hidden_state.dtype,
+            device=last_hidden_state.device,
+        )
         for i in range(last_hidden_state.shape[0]):
             # check where the 0 starts in attention_mask and then cutoff the sequence
             # to make sure it is valid for the attention_mask with all ones we will pad it with 0 at the end,
             # which does not interfere with the outputs
-            cutoff = torch.where(torch.nn.functional.pad(attention_mask_2d[i], (0, 1), value=0) == 0)[0].min() if attention_mask_2d is not None else last_hidden_state.shape[1]
+            cutoff = (
+                torch.where(torch.nn.functional.pad(attention_mask_2d[i], (0, 1), value=0) == 0)[0].min()
+                if attention_mask_2d is not None
+                else last_hidden_state.shape[1]
+            )
             pooled_output[i] = self.sequence_summary(last_hidden_state[i, :cutoff].unsqueeze(0))
 
         # apply the projection layer
@@ -1358,7 +1363,6 @@ class ClvpForCausalLM(ClvpPreTrainedModel):
             mel_start_token_embedding += self.model.decoder.position_embeds_layer(
                 torch.full((conditioning_embeds.shape[0], 1), fill_value=0, device=conditioning_embeds.device)
             )
-
 
             conditioning_embeds = torch.concat([conditioning_embeds, mel_start_token_embedding], dim=1)
 
