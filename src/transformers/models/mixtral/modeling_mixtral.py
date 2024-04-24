@@ -18,6 +18,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ PyTorch Mixtral model."""
+import os
 import inspect
 import math
 import warnings
@@ -323,6 +324,7 @@ class MixtralAttention(nn.Module):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        save_attentions: Optional[str] = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         if "padding_mask" in kwargs:
@@ -360,6 +362,18 @@ class MixtralAttention(nn.Module):
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
+
+        # save it here
+        if save_attentions != None:
+            attn_weights = attn_weights.detach().to("cpu")
+
+            # save the token using token index and layer index
+            # because we don't have the exact token index, we are using this some guessing here.
+            token_idx = key_states.shape[2] - query_states.shape[2] if use_cache else query_states.shape[2]
+            # print(f"token_idx: {token_idx}, {key_states.shape[2]} - {query_states.shape[2]}")
+
+            save_path = os.path.join(save_attentions, f"{token_idx}_{self.layer_idx}_attn_score.pt")
+            torch.save(attn_weights, save_path)
 
         if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
             raise ValueError(
@@ -422,6 +436,7 @@ class MixtralFlashAttention2(MixtralAttention):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        save_attentions: Optional[str] = None,
         **kwargs,
     ):
         if "padding_mask" in kwargs:
@@ -709,6 +724,7 @@ class MixtralSdpaAttention(MixtralAttention):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        save_attentions: Optional[str] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         if output_attentions:
             # TODO: Improve this warning with e.g. `model.config.attn_implementation = "manual"` once this is implemented.
@@ -901,6 +917,7 @@ class MixtralDecoderLayer(nn.Module):
         output_attentions: Optional[bool] = False,
         output_router_logits: Optional[bool] = False,
         use_cache: Optional[bool] = False,
+        save_attentions: Optional[str] = None,
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         if "padding_mask" in kwargs:
@@ -936,6 +953,7 @@ class MixtralDecoderLayer(nn.Module):
             past_key_value=past_key_value,
             output_attentions=output_attentions,
             use_cache=use_cache,
+            save_attentions=save_attentions,
         )
         hidden_states = residual + hidden_states
 
@@ -1119,6 +1137,7 @@ class MixtralModel(MixtralPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         output_router_logits: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        save_attentions: Optional[str] = None,
     ) -> Union[Tuple, MoeModelOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_router_logits = (
@@ -1222,6 +1241,7 @@ class MixtralModel(MixtralPreTrainedModel):
                     output_attentions,
                     output_router_logits,
                     use_cache,
+                    save_attentions,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -1232,6 +1252,7 @@ class MixtralModel(MixtralPreTrainedModel):
                     output_attentions=output_attentions,
                     output_router_logits=output_router_logits,
                     use_cache=use_cache,
+                    save_attentions=save_attentions,
                 )
 
             hidden_states = layer_outputs[0]
@@ -1318,6 +1339,7 @@ class MixtralForCausalLM(MixtralPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         output_router_logits: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        save_attentions: Optional[str] = None,
     ) -> Union[Tuple, MoeCausalLMOutputWithPast]:
         r"""
         Args:
@@ -1367,6 +1389,7 @@ class MixtralForCausalLM(MixtralPreTrainedModel):
             output_hidden_states=output_hidden_states,
             output_router_logits=output_router_logits,
             return_dict=return_dict,
+            save_attentions=save_attentions,
         )
 
         hidden_states = outputs[0]
@@ -1532,6 +1555,7 @@ class MixtralForSequenceClassification(MixtralPreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        save_attentions: Optional[str] = None,
     ) -> Union[Tuple, SequenceClassifierOutputWithPast]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
@@ -1551,6 +1575,7 @@ class MixtralForSequenceClassification(MixtralPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            save_attentions=save_attentions,
         )
         hidden_states = transformer_outputs[0]
         logits = self.score(hidden_states)

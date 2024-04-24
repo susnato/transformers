@@ -16,6 +16,7 @@
 """ PyTorch Phi model."""
 
 
+import os
 import math
 from typing import List, Optional, Tuple, Union
 
@@ -311,6 +312,7 @@ class PhiAttention(nn.Module):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        save_attentions: Optional[str] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
 
@@ -384,6 +386,18 @@ class PhiAttention(nn.Module):
 
         attn_output = torch.matmul(attn_weights, value_states)
 
+        # save it here
+        if save_attentions != None:
+            attn_weights = attn_weights.detach().to("cpu")
+
+            # save the token using token index and layer index
+            # because we don't have the exact token index, we are using this some guessing here.
+            token_idx = key_states.shape[2] - query_states.shape[2] if use_cache else query_states.shape[2]
+            # print(f"token_idx: {token_idx}, {key_states.shape[2]} - {query_states.shape[2]}")
+
+            save_path = os.path.join(save_attentions, f"{token_idx}_{self.layer_idx}_attn_score.pt")
+            torch.save(attn_weights, save_path)
+
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
             raise ValueError(
                 f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
@@ -425,6 +439,7 @@ class PhiFlashAttention2(PhiAttention):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        save_attentions: Optional[str] = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         # PhiFlashAttention2 attention does not support output_attentions
@@ -638,6 +653,7 @@ class PhiSdpaAttention(PhiAttention):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        save_attentions: Optional[str] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         if output_attentions:
             # TODO: Improve this warning with e.g. `model.config.attn_implementation = "manual"` once this is implemented.
@@ -752,6 +768,7 @@ class PhiDecoderLayer(nn.Module):
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        save_attentions: Optional[str] = None,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Args:
@@ -783,6 +800,7 @@ class PhiDecoderLayer(nn.Module):
             past_key_value=past_key_value,
             output_attentions=output_attentions,
             use_cache=use_cache,
+            save_attentions=save_attentions,
         )
         attn_outputs = self.resid_dropout(attn_outputs)
 
@@ -961,6 +979,7 @@ class PhiModel(PhiPreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        save_attentions: Optional[str] = None,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -1043,6 +1062,7 @@ class PhiModel(PhiPreTrainedModel):
                     position_ids,
                     past_key_values,
                     output_attentions,
+                    save_attentions,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -1052,6 +1072,7 @@ class PhiModel(PhiPreTrainedModel):
                     past_key_value=past_key_values,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
+                    save_attentions=save_attentions,
                 )
 
             hidden_states = layer_outputs[0]
@@ -1132,6 +1153,7 @@ class PhiForCausalLM(PhiPreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        save_attentions: Optional[str] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         r"""
         Args:
@@ -1176,6 +1198,7 @@ class PhiForCausalLM(PhiPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            save_attentions=save_attentions,
         )
 
         hidden_states = outputs[0]
@@ -1320,6 +1343,7 @@ class PhiForSequenceClassification(PhiPreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        save_attentions: Optional[str] = None,
     ) -> Union[Tuple, SequenceClassifierOutputWithPast]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
@@ -1339,6 +1363,7 @@ class PhiForSequenceClassification(PhiPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            save_attentions=save_attentions,
         )
         hidden_states = model_outputs[0]
         logits = self.score(hidden_states)
@@ -1442,6 +1467,7 @@ class PhiForTokenClassification(PhiPreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        save_attentions: Optional[str] = None,
         **deprecated_arguments,
     ) -> Union[Tuple[torch.Tensor], TokenClassifierOutput]:
         r"""
@@ -1461,6 +1487,7 @@ class PhiForTokenClassification(PhiPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            save_attention=save_attentions,
         )
 
         hidden_states = model_outputs[0]

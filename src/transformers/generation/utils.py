@@ -1323,6 +1323,7 @@ class GenerationMixin:
         streamer: Optional["BaseStreamer"] = None,
         negative_prompt_ids: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
+        save_attentions: Optional[str] = None,
         **kwargs,
     ) -> Union[GenerateOutput, torch.LongTensor]:
         r"""
@@ -1617,6 +1618,7 @@ class GenerationMixin:
                 return_dict_in_generate=generation_config.return_dict_in_generate,
                 synced_gpus=synced_gpus,
                 streamer=streamer,
+                save_attentions=save_attentions,
                 **model_kwargs,
             )
 
@@ -1637,6 +1639,7 @@ class GenerationMixin:
                 synced_gpus=synced_gpus,
                 streamer=streamer,
                 sequential=generation_config.low_memory,
+                save_attentions=save_attentions,
                 **model_kwargs,
             )
 
@@ -1664,6 +1667,7 @@ class GenerationMixin:
                 return_dict_in_generate=generation_config.return_dict_in_generate,
                 synced_gpus=synced_gpus,
                 streamer=streamer,
+                save_attentions=save_attentions,
                 **model_kwargs,
             )
 
@@ -1697,6 +1701,7 @@ class GenerationMixin:
                 return_dict_in_generate=generation_config.return_dict_in_generate,
                 synced_gpus=synced_gpus,
                 sequential=generation_config.low_memory,
+                save_attentions=save_attentions,
                 **model_kwargs,
             )
 
@@ -1735,6 +1740,7 @@ class GenerationMixin:
                 output_logits=generation_config.output_logits,
                 return_dict_in_generate=generation_config.return_dict_in_generate,
                 synced_gpus=synced_gpus,
+                save_attentions=save_attentions,
                 **model_kwargs,
             )
 
@@ -1768,6 +1774,7 @@ class GenerationMixin:
                 output_logits=generation_config.output_logits,
                 return_dict_in_generate=generation_config.return_dict_in_generate,
                 synced_gpus=synced_gpus,
+                save_attentions=save_attentions,
                 **model_kwargs,
             )
 
@@ -1841,6 +1848,7 @@ class GenerationMixin:
                 output_logits=generation_config.output_logits,
                 return_dict_in_generate=generation_config.return_dict_in_generate,
                 synced_gpus=synced_gpus,
+                save_attentions=save_attentions,
                 **model_kwargs,
             )
 
@@ -1898,6 +1906,7 @@ class GenerationMixin:
         synced_gpus: bool = False,
         streamer: Optional["BaseStreamer"] = None,
         sequential: Optional[bool] = None,
+        save_attentions: Optional[str] = None,
         **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:
         r"""
@@ -2059,7 +2068,8 @@ class GenerationMixin:
                 # encode the given prefix and prepare model inputs; encoder-decoder model process the prefix and save
                 # the `encoder_outputs`
                 outputs = self(
-                    **model_inputs, return_dict=True, output_hidden_states=True, output_attentions=output_attentions
+                    **model_inputs, return_dict=True, output_hidden_states=True, output_attentions=output_attentions,
+                    save_attentions=save_attentions
                 )
 
                 # last decoder hidden states will be used to compute the degeneration penalty (cosine similarity with
@@ -2216,6 +2226,7 @@ class GenerationMixin:
                     return_dict=True,
                     output_hidden_states=False,
                     output_attentions=False,
+                    save_attentions=save_attentions,
                 )
                 next_past_key_values = selected_outputs["past_key_values"]
 
@@ -2354,6 +2365,7 @@ class GenerationMixin:
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: bool = False,
         streamer: Optional["BaseStreamer"] = None,
+        save_attentions: Optional[str] = None,
         **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:
         r"""
@@ -2526,6 +2538,7 @@ class GenerationMixin:
                 return_dict=True,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
+                save_attentions=save_attentions,
             )
 
             if synced_gpus and this_peer_finished:
@@ -2629,6 +2642,7 @@ class GenerationMixin:
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: bool = False,
         streamer: Optional["BaseStreamer"] = None,
+        save_attentions: Optional[str] = None,
         **model_kwargs,
     ) -> Union[GenerateNonBeamOutput, torch.LongTensor]:
         r"""
@@ -2821,6 +2835,7 @@ class GenerationMixin:
                 return_dict=True,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
+                save_attentions=save_attentions,
             )
 
             if synced_gpus and this_peer_finished:
