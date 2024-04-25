@@ -18,6 +18,7 @@
 
 import os
 import math
+import threading
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -393,10 +394,13 @@ class PhiAttention(nn.Module):
             # save the token using token index and layer index
             # because we don't have the exact token index, we are using this some guessing here.
             token_idx = key_states.shape[2] - query_states.shape[2] if use_cache else query_states.shape[2]
-            # print(f"token_idx: {token_idx}, {key_states.shape[2]} - {query_states.shape[2]}")
 
-            save_path = os.path.join(save_attentions, f"{token_idx}_{self.layer_idx}_attn_score.pt")
-            torch.save(attn_weights, save_path)
+            def save_attentions_fn():
+                save_path = os.path.join(save_attentions, f"{token_idx}_{self.layer_idx}_attn_score.pt")
+                torch.save(attn_weights, save_path)
+
+            saving_thread = threading.Thread(target=save_attentions_fn)
+            saving_thread.start()
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
             raise ValueError(
